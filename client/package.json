@@ -1,0 +1,22 @@
+{
+  "name": "client",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@pixiv/three-vrm": "^3.4.2",
+    "socket.io-client": "^4.7.5",
+    "three": "^0.164.1",
+    "vite-plugin-glsl": "^1.2.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.164.0",
+    "typescript": "^5.2.2",
+    "vite": "^5.2.0"
+  }
+}

@@ -4,12 +4,16 @@
 import * as THREE from 'three';
 import { VRMHumanBoneName } from '@pixiv/three-vrm';
 import { Avatar } from './Avatar';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin } from '@pixiv/three-vrm';
 
 export class VRPlayer {
     // コントローラのスティックで地面を移動した量
     private _playerPositionOffset = new THREE.Vector3();
+
+    public get playerPositionOffset(): THREE.Vector3 {
+        return this._playerPositionOffset;
+    }
     private speed = 2.0; // 移動速度
     // WebXRのVRヘッドセットカメラ。VRヘッドセットのVRの原点から座標や角度がとれる
     private _xrHeadsetCamera: THREE.Camera;
@@ -19,7 +23,7 @@ export class VRPlayer {
     // VRMアバターを管理。
     public avatar: Avatar;
     private _renderer: THREE.WebGLRenderer;
-    private _loader: GLTFLoader;
+    public _loader: GLTFLoader;
     // 地面のグループ
     private _groudGroup: THREE.Group;
     private _vrmHeadOffsetFromRoot: THREE.Vector3 = new THREE.Vector3();
@@ -45,7 +49,7 @@ export class VRPlayer {
 
         // GLTFLoaderを初期化し、VRMLoaderPluginを登録します。
         this._loader = new GLTFLoader();
-        this._loader.register((parser) => {
+        this._loader.register((parser: any) => {
             return new VRMLoaderPlugin(parser);
         });
 

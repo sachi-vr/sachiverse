@@ -7,7 +7,9 @@ import * as THREE from 'three';
 import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
+import { io } from 'socket.io-client';
 import { VRPlayer } from './vrplayer';
+import { Avatar } from './Avatar';
 
 // シーン作成
 const scene = new THREE.Scene();
@@ -35,7 +37,8 @@ const light = new THREE.DirectionalLight(0xffffff);
 light.position.set(1, 1, -1).normalize(); // 右上奥。
 scene.add(light);
 
-// Create a group to hold all world objects that will move with the player's locomotion
+// WebXRの制限かThree.jsの制限でVRに入った後、カメラの位置を移動できない。
+// そのため、groundAndItemGroupを作成し、groundAndTemGroupの位置を移動することで、VR内でのプレイヤーの位置を調整する。
 const groundAndItemsGroup = new THREE.Group();
 scene.add(groundAndItemsGroup);
 
@@ -69,10 +72,40 @@ mirror.position.z = -2;
 groundAndItemsGroup.add(mirror);
 
 const clock = new THREE.Clock();
+let lastEmitTime = 0;
+const emitInterval = 0.1; // 100ms
 
 // playerの初期化
 const vrplayer = new VRPlayer(scene, renderer, groundAndItemsGroup);
 vrplayer.loadVRM('/shapellFuku5.vrm');
+
+const socket = io();
+const otherPlayers: { [id: string]: Avatar } = {};
+
+socket.on('connect', () => {
+  console.log('connected to server');
+});
+
+socket.on('disconnect', () => {
+  console.log('disconnected from server');
+});
+
+socket.on('playerdata', (data) => {
+  if (data.id === socket.id) return;
+
+  if (!otherPlayers[data.id]) {
+    const otherplayerA = new Avatar(scene, vrplayer._loader, 1.0);
+    otherplayerA.loadVRM('/shapellFuku5.vrm').then(() => {
+      otherPlayers[data.id] = otherplayerA;
+      groundAndItemsGroup.add(otherplayerA.vrm.scene);
+    });
+  } else {
+    const otherplayerA = otherPlayers[data.id];
+    if (otherplayerA.vrm) {
+      otherplayerA.vrm.scene.position.set(-data.playerPositionOffset.x, data.playerPositionOffset.y, -data.playerPositionOffset.z);
+    }
+  }
+});
 
 function animate() {
   renderer.setAnimationLoop(animate);
@@ -85,6 +118,14 @@ function animate() {
 
     vrplayer.avatar.update();
     vrplayer.avatar.vrm.update(delta);
+
+    if (socket.connected) {
+      if (clock.elapsedTime - lastEmitTime > emitInterval) {
+        const playerPositionOffset = vrplayer.playerPositionOffset;
+        socket.emit('playerdata', { id: socket.id, playerPositionOffset });
+        lastEmitTime = clock.elapsedTime;
+      }
+    }
   }
 
   if (!renderer.xr.isPresenting) {
