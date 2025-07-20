@@ -6,11 +6,14 @@
 import * as THREE from 'three';
 import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
+
 import { io } from 'socket.io-client';
 import { VRPlayer } from './vrplayer';
-import { Avatar } from './Avatar';
 
+import { RemoteVRPlayer } from './remoteVRPlayer';
+import { createGroundAndItems } from './ground';
+
+// WebXRやThree.jsの座標系は右手系。x軸が右、y軸が上、z軸が前がプラス。
 // シーン作成
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xcccccc);
@@ -31,45 +34,14 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 1, 0);
 controls.update();
 
-// WebXRやThree.jsの座標系は右手系。x軸が右、y軸が上、z軸が前。
-// Directionallightの設定
-const light = new THREE.DirectionalLight(0xffffff);
-light.position.set(1, 1, -1).normalize(); // 右上奥。
-scene.add(light);
 
 // WebXRの制限かThree.jsの制限でVRに入った後、カメラの位置を移動できない。
-// そのため、groundAndItemGroupを作成し、groundAndTemGroupの位置を移動することで、VR内でのプレイヤーの位置を調整する。
+// そのため、groundAndItemGroupを作成し、groundAndTemGroup側の位置を移動することで、VR内でのプレイヤーの位置を調整する。
+// groundAndItemGroupは、実際の身長とavatarの身長をあわせるため拡大縮小される
 const groundAndItemsGroup = new THREE.Group();
 scene.add(groundAndItemsGroup);
 
-// ground
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(10, 10),
-  new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 0.8, metalness: 0.2 })
-);
-ground.rotation.x = -Math.PI / 2;
-groundAndItemsGroup.add(ground);
-
-// box
-const box = new THREE.Mesh(
-  new THREE.BoxGeometry(0.5, 1, 0.5),
-  new THREE.MeshStandardMaterial({ color: 0xff0000 })
-);
-box.position.set(0.25, 0.25, 1);
-groundAndItemsGroup.add(box);
-
-// Mirror
-const mirror = new Reflector(
-  new THREE.PlaneGeometry(4, 4),
-  {
-    color: new THREE.Color(0x808080),
-    textureWidth: window.innerWidth * window.devicePixelRatio,
-    textureHeight: window.innerHeight * window.devicePixelRatio
-  }
-);
-mirror.position.y = 2;
-mirror.position.z = -2;
-groundAndItemsGroup.add(mirror);
+createGroundAndItems(groundAndItemsGroup, window);
 
 const clock = new THREE.Clock();
 let lastEmitTime = 0;
@@ -79,8 +51,9 @@ const emitInterval = 0.1; // 100ms
 const vrplayer = new VRPlayer(scene, renderer, groundAndItemsGroup);
 vrplayer.loadVRM('/shapellFuku5.vrm');
 
+// 通信初期化
 const socket = io();
-const otherPlayers: { [id: string]: Avatar } = {};
+const otherPlayers: { [id: string]: { player: RemoteVRPlayer, lastCommunicationTime: number } } = {};
 
 socket.on('connect', () => {
   console.log('connected to server');
@@ -91,21 +64,49 @@ socket.on('disconnect', () => {
 });
 
 socket.on('playerdata', (data) => {
+  // 到着したdata.idが自分のsocket.idなら無視
   if (data.id === socket.id) return;
 
   if (!otherPlayers[data.id]) {
-    const otherplayerA = new Avatar(scene, vrplayer._loader, 1.0);
-    otherplayerA.loadVRM('/shapellFuku5.vrm').then(() => {
-      otherPlayers[data.id] = otherplayerA;
-      groundAndItemsGroup.add(otherplayerA.vrm.scene);
+    // 新しいプレイヤーのデータが来た場合、RemoteVRPlayerを作成
+    const remotePlayer = new RemoteVRPlayer(scene, vrplayer._loader, data.id);
+    // すぐに次のデータが来るのでotherPlayersにすぐに登録
+    otherPlayers[data.id] = { player: remotePlayer, lastCommunicationTime: Date.now() };
+    remotePlayer.loadVRM('/shapellFuku5.vrm').then(() => {
+      groundAndItemsGroup.add(remotePlayer.group);
+      remotePlayer.updatePose(data);
     });
   } else {
-    const otherplayerA = otherPlayers[data.id];
-    if (otherplayerA.vrm) {
-      otherplayerA.vrm.scene.position.set(-data.playerPositionOffset.x, data.playerPositionOffset.y, -data.playerPositionOffset.z);
+    const other = otherPlayers[data.id];
+    if (other.player.group) {
+      // コントローラのスティックの移動を反映
+      other.player.group.position.set(-data.playerPositionOffset.x, data.playerPositionOffset.y, -data.playerPositionOffset.z);
+      other.player.updatePose(data);
+      other.lastCommunicationTime = Date.now();
     }
   }
 });
+
+socket.on('playerdisconnected', (id) => {
+  if (otherPlayers[id]) {
+    otherPlayers[id].player.dispose();
+    delete otherPlayers[id];
+  }
+});
+
+// 定期的に通信が来ないplayerを削除する
+const inactivityTimeout = 60000; // 60 seconds
+const cleanupInterval = 10000; // Check every 10 seconds
+setInterval(() => {
+  const now = Date.now();
+  for (const id in otherPlayers) {
+    if (now - otherPlayers[id].lastCommunicationTime > inactivityTimeout) {
+      console.log(`Removing inactive player: ${id}`);
+      otherPlayers[id].player.dispose();
+      delete otherPlayers[id];
+    }
+  }
+}, cleanupInterval);
 
 function animate() {
   renderer.setAnimationLoop(animate);
@@ -116,15 +117,36 @@ function animate() {
       vrplayer.update(delta);
     }
 
-    vrplayer.avatar.update();
-    vrplayer.avatar.vrm.update(delta);
-
     if (socket.connected) {
       if (clock.elapsedTime - lastEmitTime > emitInterval) {
         const playerPositionOffset = vrplayer.playerPositionOffset;
-        socket.emit('playerdata', { id: socket.id, playerPositionOffset });
+        let headsetPositionArray = null;
+        let headsetQuaternionArray = null;
+        if (renderer.xr.isPresenting) {
+          headsetPositionArray = vrplayer.headsetPosition.toArray();
+          headsetQuaternionArray = vrplayer.headsetQuaternion.toArray();
+        }
+        socket.emit('playerdata', {
+          id: socket.id,
+          playerPositionOffset,
+          headsetPositionArray,
+          headsetQuaternionArray,
+          controllerLeftPositionArray: vrplayer.controllerLeftPosition.toArray(),
+          controllerLeftQuaternionArray: vrplayer.controllerLeftQuaternion.toArray(),
+          controllerRightPositionArray: vrplayer.controllerRightPosition.toArray(),
+          controllerRightQuaternionArray: vrplayer.controllerRightQuaternion.toArray(),
+        });
+        //console.log('Debug controllerLeftPosition', vrplayer.controllerLeftPosition),
         lastEmitTime = clock.elapsedTime;
       }
+    }
+  }
+
+  // 他のプレイヤーのアバターを更新
+  for (const id in otherPlayers) {
+    const other = otherPlayers[id];
+    if (other.player.avatar.vrm) {
+      other.player.avatar.vrm.update(delta);
     }
   }
 

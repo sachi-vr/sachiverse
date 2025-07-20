@@ -12,7 +12,7 @@ export class VRPlayer {
     private _playerPositionOffset = new THREE.Vector3();
 
     public get playerPositionOffset(): THREE.Vector3 {
-        return this._playerPositionOffset;
+        return this._playerPositionOffset.clone().divideScalar(this._scaleFactor);
     }
     private speed = 2.0; // 移動速度
     // WebXRのVRヘッドセットカメラ。VRヘッドセットのVRの原点から座標や角度がとれる
@@ -33,6 +33,16 @@ export class VRPlayer {
     例: 実際の身長が1.7mでアバターが1.0mの場合、1.7/1.0 = 1.7
     */
     private _scaleFactor: number = 1.5;
+
+    // コントローラーのVRの座標系の座標と回転
+    public controllerLeftPosition: THREE.Vector3 = new THREE.Vector3();
+    public controllerLeftQuaternion: THREE.Quaternion = new THREE.Quaternion();
+    public controllerRightPosition: THREE.Vector3 = new THREE.Vector3();
+    public controllerRightQuaternion: THREE.Quaternion = new THREE.Quaternion();
+
+    // ヘッドセットのVRの座標系の座標と回転
+    public headsetPosition: THREE.Vector3 = new THREE.Vector3();
+    public headsetQuaternion: THREE.Quaternion = new THREE.Quaternion();
 
     // デバッグモードのフラグ
     private _debugMode: boolean = false;
@@ -141,6 +151,13 @@ export class VRPlayer {
         if (this._debugMode) {
             this._updateDebugSpheres();
         }
+
+        // IKを更新
+        this.avatar.update();
+        // VRMのspringボーンを更新
+        if (this.avatar.vrm) {
+            this.avatar.vrm.update(delta);
+        }
     }
 
     /**
@@ -192,26 +209,26 @@ export class VRPlayer {
         const headBone = vrm.humanoid.getNormalizedBoneNode(VRMHumanBoneName.Head);
 
         if (headBone) {
-            // ヘッドセットのVR座標を取得
-            const headsetWorldPosition = new THREE.Vector3();
-            this._xrHeadsetCamera.getWorldPosition(headsetWorldPosition);
+            // ヘッドセットのVR内座標を取得
+            this._xrHeadsetCamera.getWorldPosition(this.headsetPosition);
 
-            // ヘッドセットのVR回転を取得
-            const headsetWorldQuaternion = new THREE.Quaternion();
-            this._xrHeadsetCamera.getWorldQuaternion(headsetWorldQuaternion);
+            // ヘッドセットのVR内回転を取得
+            this._xrHeadsetCamera.getWorldQuaternion(this.headsetQuaternion);
+
 
             // アバターのルート位置を計算
             // VRヘッドセットの位置からVRMの頭のボーンのオフセットを差し引く
-            const avatarPosition = headsetWorldPosition.clone().sub(this._vrmHeadOffsetFromRoot);
+            const avatarPosition = this.headsetPosition.clone().sub(this._vrmHeadOffsetFromRoot);
+
+            // 人間はVR内を歩く。歩いた先の場所にアバターを移動
+            vrm.scene.position.copy(avatarPosition);
 
             // アバターのルート回転を計算
-            const avatarQuaternion = headsetWorldQuaternion.clone();
+            const avatarQuaternion = this.headsetQuaternion.clone();
             // アバターが逆向きになっているのを修正するため、Y軸を中心に180度回転させます。
             avatarQuaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI));
 
-            vrm.scene.position.copy(avatarPosition);
-
-            // ここから修正: アバターのルートの回転からピッチとロール成分を除去し、ヨー成分のみを適用
+            // アバターのルートの回転からピッチとロール成分を除去し、ヨー成分のみを適用
             const euler = new THREE.Euler().setFromQuaternion(avatarQuaternion, 'YXZ');
             euler.x = 0; // ピッチ成分をゼロにする
             euler.z = 0; // ロール成分をゼロにする
@@ -220,7 +237,7 @@ export class VRPlayer {
             // ここから頭の傾きを適用するロジックを追加
             // ヘッドセットの回転をアバターの回転からの相対回転として取得
             const relativeHeadRotation = new THREE.Quaternion();
-            relativeHeadRotation.copy(vrm.scene.quaternion).invert().multiply(headsetWorldQuaternion);
+            relativeHeadRotation.copy(vrm.scene.quaternion).invert().multiply(this.headsetQuaternion);
 
             // 相対回転からヨー成分を除去し、ピッチとロールのみを抽出
             const headEuler = new THREE.Euler().setFromQuaternion(relativeHeadRotation, 'YXZ');
@@ -230,8 +247,6 @@ export class VRPlayer {
             const pitchRollQuaternion = new THREE.Quaternion().setFromEuler(headEuler);
 
             // 頭のボーンにピッチとロールの回転を適用
-            // VRMの頭のボーンの初期姿勢を考慮する必要があるかもしれないが、
-            // ここではシンプルに直接適用してみる
             headBone.quaternion.copy(pitchRollQuaternion);
         }
     }
@@ -246,9 +261,15 @@ export class VRPlayer {
         vrmIK.ikChains.forEach(chain => {
             // 左手と右手に対応するIKチェーンを更新します。
             if (chain.effector.userData.vrmHumanBoneName === VRMHumanBoneName.LeftHand && this._xrControllerLeft) {
-                this._updateHand(chain, this._xrControllerLeft);
+                this._updateHandIK(chain, this._xrControllerLeft);
+                // データを呼び出し元のためにコピーしておく
+                this._xrControllerLeft.getWorldPosition(this.controllerLeftPosition);
+                this._xrControllerLeft.getWorldQuaternion(this.controllerLeftQuaternion);
             } else if (chain.effector.userData.vrmHumanBoneName === VRMHumanBoneName.RightHand && this._xrCcontrollerRight) {
-                this._updateHand(chain, this._xrCcontrollerRight);
+                this._updateHandIK(chain, this._xrCcontrollerRight);
+                // データを呼び出し元のためにコピーしておく
+                this._xrCcontrollerRight.getWorldPosition(this.controllerRightPosition);
+                this._xrCcontrollerRight.getWorldQuaternion(this.controllerRightQuaternion);
             }
         });
     }
@@ -291,7 +312,7 @@ export class VRPlayer {
      * @param chain 更新するIKチェーン。
      * @param controller 手の目標位置と回転を提供するXRコントローラー。
      */
-    private _updateHand(chain: any, controller: THREE.XRTargetRaySpace) {
+    private _updateHandIK(chain: any, controller: THREE.XRTargetRaySpace) {
         const vrm = this.avatar.vrm!;
         const goalPosition = new THREE.Vector3();
         const goalQuaternion = new THREE.Quaternion();
@@ -301,7 +322,7 @@ export class VRPlayer {
         controller.getWorldQuaternion(goalQuaternion);
 
         // 目標位置をアバターのローカル座標に変換します。
-        vrm.scene.worldToLocal(goalPosition);
+        const localPositon = vrm.scene.worldToLocal(goalPosition);
 
         // アバターのワールド回転を取得し、目標回転に適用します。
         const parentRotation = new THREE.Quaternion();
@@ -309,7 +330,7 @@ export class VRPlayer {
         goalQuaternion.premultiply(parentRotation.invert());
 
         // IKチェーンの目標位置と回転を設定します。
-        chain.goal.position.copy(goalPosition);
+        chain.goal.position.copy(localPositon);
         chain.goal.quaternion.copy(goalQuaternion);
     }
 

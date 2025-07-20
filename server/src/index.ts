@@ -36,6 +36,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('user disconnected');
+    socket.broadcast.emit('playerdisconnected', socket.id);
   });
 
   // Listen for avatar data from clients
