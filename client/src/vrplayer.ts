@@ -67,7 +67,8 @@ export class VRPlayer {
     private _controllerRightDebugSphere: THREE.Mesh;
     private _xButtonPreviouslyPressed: boolean = false; // To detect rising edge of button press
 
-    constructor(scene: THREE.Scene, renderer: THREE.WebGLRenderer, groundGroup: THREE.Group) {
+    constructor(scene: THREE.Scene, renderer: THREE.WebGLRenderer, groundGroup: THREE.Group, scaleFactor: number = 1.0) {
+        this._scaleFactor = scaleFactor;
         this._groudGroup = groundGroup; // worldGroupを保存
         this._groudGroup.scale.set(this._scaleFactor, this._scaleFactor, this._scaleFactor);
 

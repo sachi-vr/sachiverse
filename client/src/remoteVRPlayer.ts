@@ -15,10 +15,11 @@ export class RemoteVRPlayer {
     public remotegroup: THREE.Group;
     private _vrmHeadOffsetFromRoot: THREE.Vector3 = new THREE.Vector3();
     private _textMesh: THREE.Mesh | null = null;
-    private _id: string;
+    private _username: string;
 
-    constructor(scene: THREE.Scene, loader: GLTFLoader, id: string) {
-        this._id = id;
+    constructor(scene: THREE.Scene, loader: GLTFLoader, username: string) {
+        
+        this._username = username;
         this._scene = scene;
         this._loader = loader;
         this.remotegroup = new THREE.Group();
@@ -37,10 +38,10 @@ export class RemoteVRPlayer {
         // フォントをロードしてテキストを表示
         const fontLoader = new FontLoader();
         fontLoader.load('/assets/fonts/helvetiker_regular.typeface.json', (font) => {
-            const textGeometry = new TextGeometry(this._id, {
+            const textGeometry = new TextGeometry(this._username, {
                 font: font,
                 size: 0.2,
-                height: 0.05,
+                depth: 0.05,
             });
             textGeometry.computeBoundingBox();
             const textMaterial = new THREE.MeshBasicMaterial({ color: 0xff1133 });
@@ -82,6 +83,9 @@ export class RemoteVRPlayer {
      */
     public updatePose(data: any): void {
         if (!this.avatar.vrm) return;
+
+        
+
         const vrm = this.avatar.vrm;
 
         if (data.headsetPositionArray) {
