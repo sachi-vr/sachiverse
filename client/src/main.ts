@@ -9,6 +9,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 import { io } from 'socket.io-client';
 import { VRPlayer } from './vrplayer';
+import { WebRTCAudioClient } from './webrtcAudioClient';
 
 import { RemoteVRPlayer } from './remoteVRPlayer';
 import { createGroundAndItems } from './ground';
@@ -60,6 +61,12 @@ document.getElementById('start-button')!.addEventListener('click', () => {
 
   // 通信初期化
   const socket = io();
+  const webrtcClient = new WebRTCAudioClient(socket);
+  webrtcClient.startLocalStream().then(() => {
+    console.log('Local audio stream is ready');
+  }).catch(error => {
+    console.error('Failed to start local audio stream:', error);
+  });
   const otherPlayers: { [id: string]: { player: RemoteVRPlayer, lastCommunicationTime: number } } = {};
 
   document.body.appendChild(VRButton.createButton(renderer));

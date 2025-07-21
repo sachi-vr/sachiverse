@@ -66,6 +66,8 @@ export class VRPlayer {
     private _controllerLeftDebugSphere: THREE.Mesh;
     private _controllerRightDebugSphere: THREE.Mesh;
     private _xButtonPreviouslyPressed: boolean = false; // To detect rising edge of button press
+    private _previousButtonStatesLeft: { [key: string]: boolean } = {};
+    private _previousButtonStatesRight: { [key: string]: boolean } = {};
 
     constructor(scene: THREE.Scene, renderer: THREE.WebGLRenderer, groundGroup: THREE.Group, scaleFactor: number = 1.0) {
         this._scaleFactor = scaleFactor;
@@ -101,6 +103,20 @@ export class VRPlayer {
         this._headsetDebugSphere.visible = false;
         this._controllerLeftDebugSphere.visible = false;
         this._controllerRightDebugSphere.visible = false;
+
+        // Initialize previous button states
+        this._previousButtonStatesLeft = {
+            x: false,
+            y: false,
+            trigger: false,
+            grab: false,
+        };
+        this._previousButtonStatesRight = {
+            a: false,
+            b: false,
+            trigger: false,
+            grab: false,
+        };
 
         // コントローラーを検出し、左右のコントローラーを特定します。
         for (let i = 0; i < 2; i++) {
@@ -372,12 +388,86 @@ export class VRPlayer {
                 // Oculus Touch: Xボタンは通常 index 4
                 // Valve Index Controller: Bボタンが index 4
                 // 実際の環境に合わせて調整が必要
-                const xButton = gamepad.buttons[4]; 
+                // A, B, X, Yボタン (OpenXRのインデックス)
+                // Oculus Touchの場合:
+                // 左手: X (4), Y (5)
+                // 右手: A (4), B (5)
+                const xButton = gamepad.buttons[4]; // Xボタン (左手) / Aボタン (右手)
+                const yButton = gamepad.buttons[5]; // Yボタン (左手) / Bボタン (右手)
 
+                // グラブとトリガーボタン
+                // Trigger: gamepad.buttons[0]
+                // Grab (Squeeze): gamepad.buttons[1]
+                const triggerButton = gamepad.buttons[0];
+                const grabButton = gamepad.buttons[1];
+
+                const currentButtonStates = {
+                    x: xButton ? xButton.pressed : false,
+                    y: yButton ? yButton.pressed : false,
+                    trigger: triggerButton ? triggerButton.pressed : false,
+                    grab: grabButton ? grabButton.pressed : false,
+                };
+
+                // ボタンの状態が変化したかチェックし、変化があればログ出力
+                if (currentButtonStates.x !== this._previousButtonStatesLeft.x) {
+                    console.log(`Left Controller X Button: ${currentButtonStates.x ? 'Pressed' : 'Released'}`);
+                }
+                if (currentButtonStates.y !== this._previousButtonStatesLeft.y) {
+                    console.log(`Left Controller Y Button: ${currentButtonStates.y ? 'Pressed' : 'Released'}`);
+                }
+                if (currentButtonStates.trigger !== this._previousButtonStatesLeft.trigger) {
+                    console.log(`Left Controller Trigger Button: ${currentButtonStates.trigger ? 'Pressed' : 'Released'}`);
+                }
+                if (currentButtonStates.grab !== this._previousButtonStatesLeft.grab) {
+                    console.log(`Left Controller Grab Button: ${currentButtonStates.grab ? 'Pressed' : 'Released'}`);
+                }
+
+                // 状態を更新
+                this._previousButtonStatesLeft = currentButtonStates;
+
+                // デバッグモードの切り替えはXボタンで行う
                 if (xButton && xButton.pressed && !this._xButtonPreviouslyPressed) {
                     this._toggleDebugMode();
                 }
                 this._xButtonPreviouslyPressed = xButton ? xButton.pressed : false;
+            } else if (source.handedness === 'right' && source.gamepad) {
+                const gamepad = source.gamepad;
+                // A, B, X, Yボタン (OpenXRのインデックス)
+                // Oculus Touchの場合:
+                // 左手: X (4), Y (5)
+                // 右手: A (4), B (5)
+                const aButton = gamepad.buttons[4]; // Aボタン (右手)
+                const bButton = gamepad.buttons[5]; // Bボタン (右手)
+
+                // グラブとトリガーボタン
+                // Trigger: gamepad.buttons[0]
+                // Grab (Squeeze): gamepad.buttons[1]
+                const triggerButton = gamepad.buttons[0];
+                const grabButton = gamepad.buttons[1];
+
+                const currentButtonStates = {
+                    a: aButton ? aButton.pressed : false,
+                    b: bButton ? bButton.pressed : false,
+                    trigger: triggerButton ? triggerButton.pressed : false,
+                    grab: grabButton ? grabButton.pressed : false,
+                };
+
+                // ボタンの状態が変化したかチェックし、変化があればログ出力
+                if (currentButtonStates.a !== this._previousButtonStatesRight.a) {
+                    console.log(`Right Controller A Button: ${currentButtonStates.a ? 'Pressed' : 'Released'}`);
+                }
+                if (currentButtonStates.b !== this._previousButtonStatesRight.b) {
+                    console.log(`Right Controller B Button: ${currentButtonStates.b ? 'Pressed' : 'Released'}`);
+                }
+                if (currentButtonStates.trigger !== this._previousButtonStatesRight.trigger) {
+                    console.log(`Right Controller Trigger Button: ${currentButtonStates.trigger ? 'Pressed' : 'Released'}`);
+                }
+                if (currentButtonStates.grab !== this._previousButtonStatesRight.grab) {
+                    console.log(`Right Controller Grab Button: ${currentButtonStates.grab ? 'Pressed' : 'Released'}`);
+                }
+
+                // 状態を更新
+                this._previousButtonStatesRight = currentButtonStates;
             }
         }
     }

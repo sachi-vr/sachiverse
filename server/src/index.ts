@@ -32,10 +32,13 @@ const port = process.env.PORT || (useHttps ? 3001 : 3000);
 app.use(express.static(path.join(__dirname, '../../client/dist')));
 
 io.on('connection', (socket) => {
-  console.log('a user connected');
+  console.log('a user connected for webrtc:', socket.id);
+  console.log('Broadcasting webrtc-playerconnected to new player:', socket.id);
+  socket.broadcast.emit('webrtc-playerconnected', socket.id);
 
   socket.on('disconnect', () => {
-    console.log('user disconnected');
+    console.log('user disconnected:', socket.id);
+    console.log('Broadcasting playerdisconnected for:', socket.id);
     socket.broadcast.emit('playerdisconnected', socket.id);
   });
 
@@ -43,6 +46,22 @@ io.on('connection', (socket) => {
   socket.on('playerdata', (data) => {
     // Broadcast the avatar data to all other clients
     socket.broadcast.emit('playerdata', data);
+  });
+
+  // WebRTC シグナリングイベントのハンドリング
+  socket.on('webrtc-offer', (data) => {
+    console.log('Received webrtc-offer from', socket.id, 'to', data.targetSocketId);
+    socket.to(data.targetSocketId).emit('webrtc-offer', { offer: data.offer, senderSocketId: socket.id });
+  });
+
+  socket.on('webrtc-answer', (data) => {
+    console.log('Received webrtc-answer from', socket.id, 'to', data.targetSocketId);
+    socket.to(data.targetSocketId).emit('webrtc-answer', { answer: data.answer, senderSocketId: socket.id });
+  });
+
+  socket.on('webrtc-candidate', (data) => {
+    console.log('Received webrtc-candidate from', socket.id, 'to', data.targetSocketId);
+    socket.to(data.targetSocketId).emit('webrtc-candidate', { candidate: data.candidate, senderSocketId: socket.id });
   });
 });
 
