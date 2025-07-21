@@ -73,14 +73,14 @@ socket.on('playerdata', (data) => {
     // すぐに次のデータが来るのでotherPlayersにすぐに登録
     otherPlayers[data.id] = { player: remotePlayer, lastCommunicationTime: Date.now() };
     remotePlayer.loadVRM('/shapellFuku5.vrm').then(() => {
-      groundAndItemsGroup.add(remotePlayer.group);
+      groundAndItemsGroup.add(remotePlayer.remotegroup);
       remotePlayer.updatePose(data);
     });
   } else {
     const other = otherPlayers[data.id];
-    if (other.player.group) {
-      // コントローラのスティックの移動を反映
-      other.player.group.position.set(-data.playerPositionOffset.x, data.playerPositionOffset.y, -data.playerPositionOffset.z);
+    if (other.player.remotegroup) {
+      // リモートプレーヤーのコントローラのスティックの移動を反映
+      other.player.remotegroup.position.set(-data.playerPositionOffset.x, data.playerPositionOffset.y, -data.playerPositionOffset.z);
       other.player.updatePose(data);
       other.lastCommunicationTime = Date.now();
     }
@@ -131,12 +131,11 @@ function animate() {
           playerPositionOffset,
           headsetPositionArray,
           headsetQuaternionArray,
-          controllerLeftPositionArray: vrplayer.controllerLeftPosition.toArray(),
-          controllerLeftQuaternionArray: vrplayer.controllerLeftQuaternion.toArray(),
-          controllerRightPositionArray: vrplayer.controllerRightPosition.toArray(),
-          controllerRightQuaternionArray: vrplayer.controllerRightQuaternion.toArray(),
+          leftHandPositionArray: vrplayer.leftHandPosition.toArray(),
+          leftHandQuaternionArray: vrplayer.leftHandQuaternion.toArray(),
+          rightHandPositionArray: vrplayer.rightHandPosition.toArray(),
+          rightHandQuaternionArray: vrplayer.rightHandQuaternion.toArray(),
         });
-        //console.log('Debug controllerLeftPosition', vrplayer.controllerLeftPosition),
         lastEmitTime = clock.elapsedTime;
       }
     }

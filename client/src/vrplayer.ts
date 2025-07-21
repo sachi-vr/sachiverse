@@ -26,6 +26,7 @@ export class VRPlayer {
     public _loader: GLTFLoader;
     // 地面のグループ
     private _groudGroup: THREE.Group;
+    // VRMのRoot(足元)と頭のボーンの差。
     private _vrmHeadOffsetFromRoot: THREE.Vector3 = new THREE.Vector3();
 
     /* ヘッドセットとコントローラーの移動量に適用する比率
@@ -34,15 +35,28 @@ export class VRPlayer {
     */
     private _scaleFactor: number = 1.5;
 
-    // コントローラーのVRの座標系の座標と回転
-    public controllerLeftPosition: THREE.Vector3 = new THREE.Vector3();
-    public controllerLeftQuaternion: THREE.Quaternion = new THREE.Quaternion();
-    public controllerRightPosition: THREE.Vector3 = new THREE.Vector3();
-    public controllerRightQuaternion: THREE.Quaternion = new THREE.Quaternion();
-
     // ヘッドセットのVRの座標系の座標と回転
-    public headsetPosition: THREE.Vector3 = new THREE.Vector3();
+    private _headsetPosition: THREE.Vector3 = new THREE.Vector3();
+    public get headsetPosition(): THREE.Vector3 {
+        return this._headsetPosition.clone().divideScalar(this._scaleFactor);
+    }
     public headsetQuaternion: THREE.Quaternion = new THREE.Quaternion();
+
+    // 手の座標と回転(VRMのRootからの相対位置)
+    private _leftHandPosition: THREE.Vector3 = new THREE.Vector3();
+    public get leftHandPosition(): THREE.Vector3 {
+        //return this._leftHandPosition.clone().divideScalar(this._scaleFactor);
+        // アバター側がscaleFactorをかけているので、ここではそのまま返す
+        return this._leftHandPosition.clone();
+    }
+    public leftHandQuaternion: THREE.Quaternion = new THREE.Quaternion();
+    private _rightHandPosition: THREE.Vector3 = new THREE.Vector3();
+    public get rightHandPosition(): THREE.Vector3 {
+        //return this._rightHandPosition.clone().divideScalar(this._scaleFactor);
+        // アバター側がscaleFactorをかけているので、ここではそのまま返す
+        return this._rightHandPosition.clone();
+    }
+    public rightHandQuaternion: THREE.Quaternion = new THREE.Quaternion();
 
     // デバッグモードのフラグ
     private _debugMode: boolean = false;
@@ -210,7 +224,7 @@ export class VRPlayer {
 
         if (headBone) {
             // ヘッドセットのVR内座標を取得
-            this._xrHeadsetCamera.getWorldPosition(this.headsetPosition);
+            this._xrHeadsetCamera.getWorldPosition(this._headsetPosition);
 
             // ヘッドセットのVR内回転を取得
             this._xrHeadsetCamera.getWorldQuaternion(this.headsetQuaternion);
@@ -218,7 +232,7 @@ export class VRPlayer {
 
             // アバターのルート位置を計算
             // VRヘッドセットの位置からVRMの頭のボーンのオフセットを差し引く
-            const avatarPosition = this.headsetPosition.clone().sub(this._vrmHeadOffsetFromRoot);
+            const avatarPosition = this._headsetPosition.clone().sub(this._vrmHeadOffsetFromRoot);
 
             // 人間はVR内を歩く。歩いた先の場所にアバターを移動
             vrm.scene.position.copy(avatarPosition);
@@ -261,15 +275,15 @@ export class VRPlayer {
         vrmIK.ikChains.forEach(chain => {
             // 左手と右手に対応するIKチェーンを更新します。
             if (chain.effector.userData.vrmHumanBoneName === VRMHumanBoneName.LeftHand && this._xrControllerLeft) {
-                this._updateHandIK(chain, this._xrControllerLeft);
+                const {position, quaternion} = this._updateHandIKgoal(chain, this._xrControllerLeft);
                 // データを呼び出し元のためにコピーしておく
-                this._xrControllerLeft.getWorldPosition(this.controllerLeftPosition);
-                this._xrControllerLeft.getWorldQuaternion(this.controllerLeftQuaternion);
+                this._leftHandPosition.copy(position);
+                this.leftHandQuaternion.copy(quaternion);
             } else if (chain.effector.userData.vrmHumanBoneName === VRMHumanBoneName.RightHand && this._xrCcontrollerRight) {
-                this._updateHandIK(chain, this._xrCcontrollerRight);
+                const {position, quaternion} = this._updateHandIKgoal(chain, this._xrCcontrollerRight);
                 // データを呼び出し元のためにコピーしておく
-                this._xrCcontrollerRight.getWorldPosition(this.controllerRightPosition);
-                this._xrCcontrollerRight.getWorldQuaternion(this.controllerRightQuaternion);
+                this._rightHandPosition.copy(position);
+                this.rightHandQuaternion.copy(quaternion);
             }
         });
     }
@@ -312,26 +326,32 @@ export class VRPlayer {
      * @param chain 更新するIKチェーン。
      * @param controller 手の目標位置と回転を提供するXRコントローラー。
      */
-    private _updateHandIK(chain: any, controller: THREE.XRTargetRaySpace) {
+    private _updateHandIKgoal(chain: any, controller: THREE.XRTargetRaySpace) {
         const vrm = this.avatar.vrm!;
-        const goalPosition = new THREE.Vector3();
-        const goalQuaternion = new THREE.Quaternion();
+        const worldPosition = new THREE.Vector3();
+        const worldQuaternion = new THREE.Quaternion();
 
         // コントローラーのワールド位置と回転を取得します。
-        controller.getWorldPosition(goalPosition);
-        controller.getWorldQuaternion(goalQuaternion);
+        controller.getWorldPosition(worldPosition);
+        controller.getWorldQuaternion(worldQuaternion);
 
         // 目標位置をアバターのローカル座標に変換します。
-        const localPositon = vrm.scene.worldToLocal(goalPosition);
+        // アバターはヘッドセット向きに座標系が変わっている。
+        // 例えばヘッドセットが90度右向きで手を前に出した場合、
+        // ワールド座標系だとx方向に+になっている。
+        // しかしアバターのローカル座標系ではz方向に+になっている。
+        const localPositon = vrm.scene.worldToLocal(worldPosition);
 
         // アバターのワールド回転を取得し、目標回転に適用します。
         const parentRotation = new THREE.Quaternion();
         vrm.scene.getWorldQuaternion(parentRotation);
-        goalQuaternion.premultiply(parentRotation.invert());
+        const localQuaternion = worldQuaternion.premultiply(parentRotation.invert());
 
         // IKチェーンの目標位置と回転を設定します。
         chain.goal.position.copy(localPositon);
-        chain.goal.quaternion.copy(goalQuaternion);
+        chain.goal.quaternion.copy(localQuaternion);
+        
+        return { position: localPositon, quaternion: localQuaternion }; // 位置と回転を返す
     }
 
     /**

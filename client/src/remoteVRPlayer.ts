@@ -12,7 +12,7 @@ export class RemoteVRPlayer {
     public avatar: Avatar;
     private _scene: THREE.Scene;
     private _loader: GLTFLoader;
-    public group: THREE.Group;
+    public remotegroup: THREE.Group;
     private _vrmHeadOffsetFromRoot: THREE.Vector3 = new THREE.Vector3();
     private _textMesh: THREE.Mesh | null = null;
     private _id: string;
@@ -21,8 +21,8 @@ export class RemoteVRPlayer {
         this._id = id;
         this._scene = scene;
         this._loader = loader;
-        this.group = new THREE.Group();
-        this._scene.add(this.group);
+        this.remotegroup = new THREE.Group();
+        this._scene.add(this.remotegroup);
         this.avatar = new Avatar(this._scene, this._loader, 1.0);
     }
 
@@ -32,7 +32,7 @@ export class RemoteVRPlayer {
      */
     public async loadVRM(url: string): Promise<void> {
         await this.avatar.loadVRM(url);
-        this.group.add(this.avatar.vrm.scene);
+        this.remotegroup.add(this.avatar.vrm.scene);
 
         // フォントをロードしてテキストを表示
         const fontLoader = new FontLoader();
@@ -52,7 +52,7 @@ export class RemoteVRPlayer {
                 if (headBone) {
                     const headWorldPosition = new THREE.Vector3();
                     headBone.getWorldPosition(headWorldPosition);
-                    this.group.worldToLocal(headWorldPosition);
+                    this.remotegroup.worldToLocal(headWorldPosition);
 
                     this._textMesh.position.copy(headWorldPosition);
                     this._textMesh.position.y += 0.3;
@@ -61,7 +61,7 @@ export class RemoteVRPlayer {
                     }
                 }
             }
-            this.group.add(this._textMesh);
+            this.remotegroup.add(this._textMesh);
         });
 
         // VRMの頭のボーンの初期位置を計算し、ルートからのオフセットを保存
@@ -127,10 +127,12 @@ export class RemoteVRPlayer {
         const vrmIK = this.avatar.vrmIK;
         if (vrmIK) {
             vrmIK.ikChains.forEach(chain => {
-                if (chain.effector.userData.vrmHumanBoneName === VRMHumanBoneName.LeftHand && data.controllerLeftPositionArray && data.controllerLeftQuaternionArray) {
-                    this._updateHandIK(chain, data.controllerLeftPositionArray, data.controllerLeftQuaternionArray);
-                } else if (chain.effector.userData.vrmHumanBoneName === VRMHumanBoneName.RightHand && data.controllerRightPositionArray && data.controllerRightQuaternionArray) {
-                    this._updateHandIK(chain, data.controllerRightPositionArray, data.controllerRightQuaternionArray);
+                if (chain.effector.userData.vrmHumanBoneName === VRMHumanBoneName.LeftHand && data.leftHandPositionArray && data.leftHandQuaternionArray) {
+                    chain.goal.position.copy(new THREE.Vector3().fromArray(data.leftHandPositionArray));
+                    chain.goal.quaternion.copy(new THREE.Quaternion().fromArray(data.leftHandQuaternionArray) );
+                } else if (chain.effector.userData.vrmHumanBoneName === VRMHumanBoneName.RightHand && data.rightHandPositionArray && data.rightHandQuaternionArray) {
+                    chain.goal.position.copy(new THREE.Vector3().fromArray(data.rightHandPositionArray));
+                    chain.goal.quaternion.copy(new THREE.Quaternion().fromArray(data.rightHandQuaternionArray) );
                 }
             });
             this.avatar.update();
@@ -140,43 +142,17 @@ export class RemoteVRPlayer {
     }
 
     /**
-     * 指定されたIKチェーンとコントローラーのデータに基づいてアバターの手を更新します。
-     * @param chain 更新するIKチェーン。
-     * @param positionArray 手の目標位置の配列。
-     * @param quaternionArray 手の目標回転の配列。
-     */
-    private _updateHandIK(chain: any, positionArray: number[], quaternionArray: number[]) {
-        const vrm = this.avatar.vrm!;
-        const goalPosition = new THREE.Vector3().fromArray(positionArray);
-        const goalQuaternion = new THREE.Quaternion().fromArray(quaternionArray);
-
-        // 目標位置をアバターのローカル座標に変換します。
-        const localPositon = vrm.scene.worldToLocal(goalPosition);
-
-        // アバターのワールド回転を取得し、目標回転に適用します。
-        const parentRotation = new THREE.Quaternion();
-        vrm.scene.getWorldQuaternion(parentRotation);
-        goalQuaternion.premultiply(parentRotation.invert());
-
-        localPositon.add(vrm.scene.position);
-        // IKチェーンの目標位置と回転を設定します。
-        chain.goal.position.copy(localPositon);
-        //chain.goal.position.copy(new THREE.Vector3(0, 0, 0));
-        chain.goal.quaternion.copy(goalQuaternion);
-    }
-
-    /**
      * リモートプレイヤーのアバターをシーンから削除します。
      */
     public dispose(): void {
         if (this.avatar.vrm) {
-            this.group.remove(this.avatar.vrm.scene);
+            this.remotegroup.remove(this.avatar.vrm.scene);
         }
         if (this._textMesh) {
-            this.group.remove(this._textMesh);
+            this.remotegroup.remove(this._textMesh);
             this._textMesh.geometry.dispose();
             (this._textMesh.material as THREE.Material).dispose();
         }
-        this._scene.remove(this.group);
+        this._scene.remove(this.remotegroup);
     }
 }
