@@ -7,7 +7,8 @@
     "start": "ts-node src/index.ts",
     "start:https": "cross-env HTTPS=true ts-node src/index.ts",
     "dev": "nodemon --watch src --exec ts-node src/index.ts",
-    "dev:https": "cross-env HTTPS=true nodemon --watch src --exec ts-node src/index.ts"
+    "dev:https": "cross-env HTTPS=true nodemon --watch src --exec ts-node src/index.ts",
+    "build": "tsc"
   },
   "keywords": [],
   "author": "",

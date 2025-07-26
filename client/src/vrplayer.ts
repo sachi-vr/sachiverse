@@ -6,6 +6,7 @@ import { VRMHumanBoneName } from '@pixiv/three-vrm';
 import { Avatar } from './Avatar';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin } from '@pixiv/three-vrm';
+import { WebRTCAudioClient } from './webrtcAudioClient';
 
 export class VRPlayer {
     // コントローラのスティックで地面を移動した量
@@ -69,10 +70,14 @@ export class VRPlayer {
     private _previousButtonStatesLeft: { [key: string]: boolean } = {};
     private _previousButtonStatesRight: { [key: string]: boolean } = {};
 
-    constructor(scene: THREE.Scene, renderer: THREE.WebGLRenderer, groundGroup: THREE.Group, scaleFactor: number = 1.0) {
+    private _micMesh: THREE.Mesh;
+    private _webRTCAudioClient: WebRTCAudioClient;
+
+    constructor(scene: THREE.Scene, renderer: THREE.WebGLRenderer, groundGroup: THREE.Group, webRTCAudioClient: WebRTCAudioClient, scaleFactor: number = 1.0) {
         this._scaleFactor = scaleFactor;
         this._groudGroup = groundGroup; // worldGroupを保存
         this._groudGroup.scale.set(this._scaleFactor, this._scaleFactor, this._scaleFactor);
+        this._webRTCAudioClient = webRTCAudioClient;
 
         // GLTFLoaderを初期化し、VRMLoaderPluginを登録します。
         this._loader = new GLTFLoader();
@@ -103,6 +108,12 @@ export class VRPlayer {
         this._headsetDebugSphere.visible = false;
         this._controllerLeftDebugSphere.visible = false;
         this._controllerRightDebugSphere.visible = false;
+
+        // マイクのメッシュを作成
+        const micGeometry = new THREE.SphereGeometry(0.01, 32, 32);
+        const micMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        this._micMesh = new THREE.Mesh(micGeometry, micMaterial);
+        scene.add(this._micMesh);
 
         // Initialize previous button states
         this._previousButtonStatesLeft = {
@@ -177,6 +188,20 @@ export class VRPlayer {
         this._updateHead();
         this._updateHands();
         this._handleInput(); // 新しい入力処理メソッドを呼び出す
+
+        // マイクの音量に応じてスケールを更新
+        const volume = this._webRTCAudioClient.getLocalStreamVolume();
+        const scale = 1 + volume * 5;
+        this._micMesh.scale.set(scale, scale, scale);
+
+        // マイクの位置をヘッドセットの横に更新
+        const headsetPosition = new THREE.Vector3();
+        this._xrHeadsetCamera.getWorldPosition(headsetPosition);
+        const headsetQuaternion = new THREE.Quaternion();
+        this._xrHeadsetCamera.getWorldQuaternion(headsetQuaternion);
+        const offset = new THREE.Vector3(0.2, -0.1, -0.5);
+        offset.applyQuaternion(headsetQuaternion);
+        this._micMesh.position.copy(headsetPosition).add(offset);
 
         // デバッグモードが有効な場合、デバッグ用の球体の位置を更新
         if (this._debugMode) {

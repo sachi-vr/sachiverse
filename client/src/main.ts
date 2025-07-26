@@ -14,9 +14,50 @@ import { WebRTCAudioClient } from './webrtcAudioClient';
 import { RemoteVRPlayer } from './remoteVRPlayer';
 import { createGroundAndItems } from './ground';
 
+const micSelect = document.getElementById('mic-select') as HTMLSelectElement;
+let micsPopulated = false;
+
+async function populateMicrophoneList() {
+    if (micsPopulated) return;
+    try {
+        // ブラウザから権限を取得して、マイク一覧を取得
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // いったんマイク停止
+        stream.getTracks().forEach(track => track.stop());
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputDevices = devices.filter(device => device.kind === 'audioinput');
+        
+        micSelect.innerHTML = ''; // selectの内容をクリア
+        if (audioInputDevices.length > 0) {
+            audioInputDevices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.text = device.label || `Microphone ${micSelect.options.length + 1}`;
+                micSelect.appendChild(option);
+            });
+        } else {
+            micSelect.innerHTML = '<option value="">No microphones found</option>';
+        }
+        micsPopulated = true;
+    } catch (err) {
+        console.error('Error accessing microphone:', err);
+        micSelect.innerHTML = '<option value="">Mic permission denied</option>';
+    }
+}
+
+// Add a placeholder option
+micSelect.innerHTML = '<option>Click to select Mic</option>';
+// Populate the list when the user clicks the dropdown
+micSelect.addEventListener('mousedown', populateMicrophoneList);
 
 document.getElementById('start-button')!.addEventListener('click', () => {
+  // 初めの画面の値を取得
   const scaleFactor = parseFloat((document.getElementById('scalefactor') as HTMLInputElement).value);
+  let selectedMicId: string | undefined = (document.getElementById('mic-select') as HTMLSelectElement).value;
+  if (['Click to select Mic', 'No microphones found', 'Mic permission denied'].includes(selectedMicId)) {
+    selectedMicId = undefined;
+  }
 
   // remove overlay
   const overlay = document.getElementById('overlay');
@@ -62,7 +103,7 @@ document.getElementById('start-button')!.addEventListener('click', () => {
   // 通信初期化
   const socket = io();
   const webrtcClient = new WebRTCAudioClient(socket);
-  webrtcClient.startLocalStream().then(() => {
+  webrtcClient.startLocalStream(selectedMicId).then(() => {
     console.log('Local audio stream is ready');
   }).catch(error => {
     console.error('Failed to start local audio stream:', error);
@@ -71,7 +112,7 @@ document.getElementById('start-button')!.addEventListener('click', () => {
 
   document.body.appendChild(VRButton.createButton(renderer));
 
-  vrplayer = new VRPlayer(scene, renderer, groundAndItemsGroup, scaleFactor);
+  vrplayer = new VRPlayer(scene, renderer, groundAndItemsGroup, webrtcClient, scaleFactor);
   vrplayer.loadVRM('/shapellFuku5.vrm');
 
   socket.on('connect', () => {
@@ -88,7 +129,7 @@ document.getElementById('start-button')!.addEventListener('click', () => {
 
     if (!otherPlayers[data.id]) {
       // 新しいプレイヤーのデータが来た場合、RemoteVRPlayerを作成
-      const remotePlayer = new RemoteVRPlayer(scene, vrplayer._loader, data.username);
+      const remotePlayer = new RemoteVRPlayer(scene, vrplayer._loader, data.username, data.id, webrtcClient);
       // すぐに次のデータが来るのでotherPlayersにすぐに登録
       otherPlayers[data.id] = { player: remotePlayer, lastCommunicationTime: Date.now() };
       remotePlayer.loadVRM('/shapellFuku5.vrm').then(() => {
@@ -166,6 +207,7 @@ document.getElementById('start-button')!.addEventListener('click', () => {
       if (otherPlayers[id]) { // Ensure the player still exists
         const other = otherPlayers[id];
         if (other.player && other.player.avatar && other.player.avatar.vrm) {
+          other.player.update();
           other.player.avatar.vrm.update(delta);
         }
       }
@@ -180,4 +222,3 @@ document.getElementById('start-button')!.addEventListener('click', () => {
 
   animate();
 });
-

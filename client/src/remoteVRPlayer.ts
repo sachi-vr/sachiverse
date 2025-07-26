@@ -7,6 +7,7 @@ import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { Avatar } from './Avatar';
 import { VRMHumanBoneName } from '@pixiv/three-vrm';
+import { WebRTCAudioClient } from './webrtcAudioClient';
 
 export class RemoteVRPlayer {
     public avatar: Avatar;
@@ -16,8 +17,10 @@ export class RemoteVRPlayer {
     private _vrmHeadOffsetFromRoot: THREE.Vector3 = new THREE.Vector3();
     private _textMesh: THREE.Mesh | null = null;
     private _username: string;
+    private _webRTCAudioClient: WebRTCAudioClient;
+    private _socketId: string;
 
-    constructor(scene: THREE.Scene, loader: GLTFLoader, username: string) {
+    constructor(scene: THREE.Scene, loader: GLTFLoader, username: string, socketId: string, webRTCAudioClient: WebRTCAudioClient) {
         
         this._username = username;
         this._scene = scene;
@@ -25,6 +28,8 @@ export class RemoteVRPlayer {
         this.remotegroup = new THREE.Group();
         this._scene.add(this.remotegroup);
         this.avatar = new Avatar(this._scene, this._loader, 1.0);
+        this._webRTCAudioClient = webRTCAudioClient;
+        this._socketId = socketId;
     }
 
     /**
@@ -143,6 +148,16 @@ export class RemoteVRPlayer {
         }
         // IKを更新
         this.avatar.update();
+    }
+
+    public update(): void {
+        if (!this.avatar.vrm || !this._textMesh) return;
+
+        const volume = this._webRTCAudioClient.getRemoteStreamVolume(this._socketId);
+        const color = new THREE.Color(0xff1133);
+        const speakingColor = new THREE.Color(0x00ff00);
+        color.lerp(speakingColor, volume * 5);
+        (this._textMesh.material as THREE.MeshBasicMaterial).color = color;
     }
 
     /**

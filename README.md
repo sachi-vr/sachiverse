@@ -58,7 +58,19 @@ HTTPSで開発用の実行
 ```
 cd server; npm run dev:https
 ```
-
+### Dcokrでの実行方法
+ビルド
+```
+docker build -t sachiverse:latest .
+```
+httpで実行
+```
+docker run --rm -p 3000:3000 sachiverse:latest
+```
+httpsで実行
+```
+docker run --rm -p 3001:3001 -e HTTPS=true sachiverse:latest
+```
 ## ライセンスと参考
 https://github.com/Keshigom/VRMToybox を参考にさせていただいてます。
 よってMITライセンスにします。
