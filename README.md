@@ -10,7 +10,7 @@ WebXRを使いVRで動作します。
 
 ## 開発
 ### クライアント
-three-vrm と WebXR を使用。
+three-vrm と WebXR と WebRTC を使用。
 
 ### サーバ
 express と socket.io を使用。

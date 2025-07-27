@@ -27,7 +27,7 @@ RUN npm run build
 # Stage 3: 最終イメージ
 FROM node:24-alpine
 
-RUN addgroup -g 1321 -S node && adduser -u 1321 -S node -G node
+RUN addgroup -g 1321 mygroup && adduser -D -u 1321 -G mygroup myuser
 
 WORKDIR /usr/src/app
 
@@ -37,8 +37,8 @@ COPY client/key.pem ./client/
 COPY client/cert.pem ./client/
 COPY server/package*.json ./server/
 
-RUN chown -R node:node /usr/src/app
-USER node
+RUN chown -R myuser:mygroup /usr/src/app
+USER myuser
 
 RUN cd server && npm install --only=production --cache .npm-cache
 

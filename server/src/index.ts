@@ -1,7 +1,7 @@
 import express from 'express';
 import https from 'https';
 import http from 'http';
-import { Server } from 'socket.io';
+import { Server, Socket } from 'socket.io';
 import path from 'path';
 import fs from 'fs';
 
@@ -31,13 +31,14 @@ const port = process.env.PORT || (useHttps ? 3001 : 3000);
 // Serve static files from the client's dist directory
 app.use(express.static(path.join(__dirname, '../../client/dist')));
 
-io.on('connection', (socket) => {
-  console.log('a user connected for webrtc:', socket.id);
+io.on('connection', (socket: Socket) => {
+  const ip = socket.handshake.headers['cf-connecting-ip'] || socket.handshake.address;
+  console.log('a user connected for webrtc:', socket.id, 'ip:', ip);
   console.log('Broadcasting webrtc-playerconnected to new player:', socket.id);
   socket.broadcast.emit('webrtc-playerconnected', socket.id);
 
   socket.on('disconnect', () => {
-    console.log('user disconnected:', socket.id);
+    console.log('user disconnected:', socket.id, 'ip:', ip);
     console.log('Broadcasting playerdisconnected for:', socket.id);
     socket.broadcast.emit('playerdisconnected', socket.id);
   });
