@@ -70,6 +70,10 @@ io.on('connection', (socket: Socket) => {
     console.log('Received itemStateChange:', data);
     socket.broadcast.emit('itemStateChange', data);
   });
+
+  socket.on('drawline', (data) => {
+    socket.broadcast.emit('drawline', data);
+  });
 });
 
 server.listen(port, () => {

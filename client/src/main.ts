@@ -12,6 +12,7 @@ import { VRPlayer } from './vrplayer';
 import { WebRTCAudioClient } from './webrtcAudioClient';
 
 import { GrabbableItem } from './grabbableItem';
+import { Pen } from './Pen';
 import { RemoteVRPlayer } from './remoteVRPlayer';
 import { createGroundAndItems } from './ground';
 
@@ -104,6 +105,11 @@ document.getElementById('start-button')!.addEventListener('click', () => {
 
   // 通信初期化
   const socket = io();
+
+  const pen = new Pen('pen1', groundAndItemsGroup, new THREE.Vector3(0.5, 0.5, -0.5), socket);
+  items.push(pen);
+  const pen2 = new Pen('pen2', groundAndItemsGroup, new THREE.Vector3(0, 1, 0.5), socket);
+  items.push(pen2);
   const webrtcClient = new WebRTCAudioClient(socket);
   webrtcClient.startLocalStream(selectedMicId).then(() => {
     console.log('Local audio stream is ready');
@@ -171,11 +177,19 @@ document.getElementById('start-button')!.addEventListener('click', () => {
     }
   });
 
-  socket.on('itemStateChange', (data) => {
+    socket.on('itemStateChange', (data) => {
     const item = items.find(i => i.id === data.itemId);
     if (item) {
       item.updateState(data.isGrabbed, data.grabbedBy);
     }
+  });
+
+  socket.on('drawline', (data) => {
+    const points = data.points.map((p: any) => new THREE.Vector3(p.x, p.y, p.z));
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 });
+    const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(lineGeometry, lineMaterial);
+    groundAndItemsGroup.add(line);
   });
 
   // 定期的に通信が来ないplayerを削除する

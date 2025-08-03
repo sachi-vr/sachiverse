@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import { Item } from './item';
 import { GrabbableItem } from './grabbableItem';
-import { Pen } from './Pen';
 
 export function createGroundAndItems(groundAndItemsGroup: THREE.Group, window: Window): Item[] {
   // ground
@@ -49,11 +48,5 @@ export function createGroundAndItems(groundAndItemsGroup: THREE.Group, window: W
   light.position.set(1, 1, -1).normalize(); // 右上奥。
   groundAndItemsGroup.add(light);
 
-  const penItem = new Pen(
-    'pen1',
-    groundAndItemsGroup,
-    new THREE.Vector3(0.5, 0.5, -0.5)
-  );
-
-  return [boxItem, sphereItem, penItem];
+  return [boxItem, sphereItem];
 }

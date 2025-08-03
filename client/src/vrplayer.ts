@@ -8,6 +8,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin } from '@pixiv/three-vrm';
 import { WebRTCAudioClient } from './webrtcAudioClient';
 import { GrabbableItem } from './grabbableItem';
+import { Pen } from './Pen';
 import { Item } from './item';
 import { Socket } from 'socket.io-client';
 
@@ -251,6 +252,10 @@ export class VRPlayer {
                 const targetPosition = controllerWorldPosition.clone().add(offset);
 
                 this._grabbedItem.updatePosition(targetPosition, targetQuaternion);
+
+                if (this._grabbedItem instanceof Pen) {
+                    this._grabbedItem.update();
+                }
             }
         }
     }
@@ -519,6 +524,15 @@ export class VRPlayer {
                     }
                 }
 
+                // 描画処理
+                if (this._grabbedItem instanceof Pen && this._grabbedHand === 'left') {
+                    if (currentButtonStates.trigger && !this._previousButtonStatesLeft.trigger) {
+                        this._grabbedItem.startDrawing();
+                    } else if (!currentButtonStates.trigger && this._previousButtonStatesLeft.trigger) {
+                        this._grabbedItem.stopDrawing();
+                    }
+                }
+
                 // ボタンの状態が変化したかチェックし、変化があればログ出力
                 if (currentButtonStates.x !== this._previousButtonStatesLeft.x) {
                     console.log(`Left Controller X Button: ${currentButtonStates.x ? 'Pressed' : 'Released'}`);
@@ -607,6 +621,15 @@ export class VRPlayer {
                         }
                         this._grabbedItem = null;
                         this._grabbedHand = null;
+                    }
+                }
+
+                // 描画処理
+                if (this._grabbedItem instanceof Pen && this._grabbedHand === 'right') {
+                    if (currentButtonStates.trigger && !this._previousButtonStatesRight.trigger) {
+                        this._grabbedItem.startDrawing();
+                    } else if (!currentButtonStates.trigger && this._previousButtonStatesRight.trigger) {
+                        this._grabbedItem.stopDrawing();
                     }
                 }
 
