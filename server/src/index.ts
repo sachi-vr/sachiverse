@@ -72,6 +72,7 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('drawline', (data) => {
+    console.log('Received drawline', socket.id, 'ip:', ip);
     socket.broadcast.emit('drawline', data);
   });
 });

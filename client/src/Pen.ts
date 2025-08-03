@@ -42,6 +42,7 @@ export class Pen extends GrabbableItem {
     public stopDrawing() {
         console.log('stopDrawing called');
         if (this.isDrawing) {
+            console.log('socket.emit drawline called');
             this.socket.emit('drawline', { points: this.points.map(p => ({ x: p.x, y: p.y, z: p.z })) });
         }
         this.isDrawing = false;
