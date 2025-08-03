@@ -7,12 +7,16 @@ import { Avatar } from './Avatar';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin } from '@pixiv/three-vrm';
 import { WebRTCAudioClient } from './webrtcAudioClient';
+import { GrabbableItem } from './grabbableItem';
+import { Item } from './item';
+import { Socket } from 'socket.io-client';
 
 export class VRPlayer {
     // コントローラのスティックで地面を移動した量
     private _playerPositionOffset = new THREE.Vector3();
 
     public get playerPositionOffset(): THREE.Vector3 {
+        // スケールを戻す
         return this._playerPositionOffset.clone().divideScalar(this._scaleFactor);
     }
     private speed = 2.0; // 移動速度
@@ -50,13 +54,15 @@ export class VRPlayer {
         // アバター側がscaleFactorをかけているので、ここではそのまま返す
         return this._leftHandPosition.clone();
     }
-    public leftHandQuaternion: THREE.Quaternion = new THREE.Quaternion();
+
     private _rightHandPosition: THREE.Vector3 = new THREE.Vector3();
     public get rightHandPosition(): THREE.Vector3 {
         //return this._rightHandPosition.clone().divideScalar(this._scaleFactor);
         // アバター側がscaleFactorをかけているので、ここではそのまま返す
         return this._rightHandPosition.clone();
     }
+
+    public leftHandQuaternion: THREE.Quaternion = new THREE.Quaternion();
     public rightHandQuaternion: THREE.Quaternion = new THREE.Quaternion();
 
     // デバッグモードのフラグ
@@ -72,12 +78,25 @@ export class VRPlayer {
 
     private _micMesh: THREE.Mesh;
     private _webRTCAudioClient: WebRTCAudioClient;
+    private _items: Item[];
+    private _socket: Socket;
+    private _grabbedItem: Item | null = null;
+    private _grabbedHand: 'left' | 'right' | null = null;
+    private _grabOffsetPosition: THREE.Vector3 = new THREE.Vector3();
+    private _grabOffsetQuaternion: THREE.Quaternion = new THREE.Quaternion();
 
-    constructor(scene: THREE.Scene, renderer: THREE.WebGLRenderer, groundGroup: THREE.Group, webRTCAudioClient: WebRTCAudioClient, scaleFactor: number = 1.0) {
+    public get grabbedItem(): Item | null {
+        return this._grabbedItem;
+    }
+
+    constructor(scene: THREE.Scene, renderer: THREE.WebGLRenderer, groundGroup: THREE.Group, webRTCAudioClient: WebRTCAudioClient, socket: Socket, scaleFactor: number = 1.0, items: Item[] = []) {
         this._scaleFactor = scaleFactor;
         this._groudGroup = groundGroup; // worldGroupを保存
         this._groudGroup.scale.set(this._scaleFactor, this._scaleFactor, this._scaleFactor);
         this._webRTCAudioClient = webRTCAudioClient;
+        this._items = items;
+        this._socket = socket;
+        this._grabbedHand = null;
 
         // GLTFLoaderを初期化し、VRMLoaderPluginを登録します。
         this._loader = new GLTFLoader();
@@ -213,6 +232,26 @@ export class VRPlayer {
         // VRMのspringボーンを更新
         if (this.avatar.vrm) {
             this.avatar.vrm.update(delta);
+        }
+
+        // 掴んだアイテムの位置を更新
+        if (this._grabbedItem && this._grabbedHand && this._grabbedItem instanceof GrabbableItem) {
+            const controller = this._grabbedHand === 'left' ? this._xrControllerLeft : this._xrCcontrollerRight;
+            if (controller) {
+                const controllerWorldPosition = new THREE.Vector3();
+                const controllerWorldQuaternion = new THREE.Quaternion();
+                controller.getWorldPosition(controllerWorldPosition);
+                controller.getWorldQuaternion(controllerWorldQuaternion);
+
+                // Apply rotation offset
+                const targetQuaternion = controllerWorldQuaternion.clone().multiply(this._grabOffsetQuaternion);
+
+                // Apply position offset
+                const offset = this._grabOffsetPosition.clone().applyQuaternion(controllerWorldQuaternion);
+                const targetPosition = controllerWorldPosition.clone().add(offset);
+
+                this._grabbedItem.updatePosition(targetPosition, targetQuaternion);
+            }
         }
     }
 
@@ -433,6 +472,53 @@ export class VRPlayer {
                     grab: grabButton ? grabButton.pressed : false,
                 };
 
+                // グラブ処理
+                if (currentButtonStates.grab && !this._previousButtonStatesLeft.grab) {
+                    if (!this._grabbedItem) { // 他のアイテムを掴んでいないか確認
+                        const controllerPosition = new THREE.Vector3();
+                        this._xrControllerLeft.getWorldPosition(controllerPosition);
+                        for (const item of this._items) {
+                            // 他のプレイヤーに掴まれていないアイテムのみ掴める
+                            if (!item.isGrabbed && item.checkCollision(controllerPosition)) {
+                                item.grab(this._socket.id);
+                                this._grabbedItem = item;
+                                this._grabbedHand = 'left';
+
+                                if (this._xrControllerLeft && this._grabbedItem.mesh) {
+                                    const controllerWorldQuaternion = new THREE.Quaternion();
+                                    this._xrControllerLeft.getWorldQuaternion(controllerWorldQuaternion);
+                                    const controllerInverseWorldQuaternion = controllerWorldQuaternion.clone().invert();
+                            
+                                    // Calculate position offset
+                                    const itemWorldPosition = new THREE.Vector3();
+                                    this._grabbedItem.mesh.getWorldPosition(itemWorldPosition);
+                                    this._grabOffsetPosition.subVectors(itemWorldPosition, controllerPosition);
+                                    this._grabOffsetPosition.applyQuaternion(controllerInverseWorldQuaternion);
+                            
+                                    // Calculate rotation offset
+                                    const itemWorldQuaternion = new THREE.Quaternion();
+                                    this._grabbedItem.mesh.getWorldQuaternion(itemWorldQuaternion);
+                                    this._grabOffsetQuaternion.multiplyQuaternions(controllerInverseWorldQuaternion, itemWorldQuaternion);
+                                }
+
+                                if (item instanceof GrabbableItem) {
+                                    this._socket.emit('itemStateChange', { itemId: item.id, isGrabbed: true, grabbedBy: this._socket.id });
+                                }
+                                break; // 複数のアイテムを同時に掴まないように
+                            }
+                        }
+                    }
+                } else if (!currentButtonStates.grab && this._previousButtonStatesLeft.grab) {
+                    if (this._grabbedItem && this._grabbedHand === 'left') {
+                        this._grabbedItem.release();
+                        if (this._grabbedItem instanceof GrabbableItem) {
+                            this._socket.emit('itemStateChange', { itemId: this._grabbedItem.id, isGrabbed: false, grabbedBy: null });
+                        }
+                        this._grabbedItem = null;
+                        this._grabbedHand = null;
+                    }
+                }
+
                 // ボタンの状態が変化したかチェックし、変化があればログ出力
                 if (currentButtonStates.x !== this._previousButtonStatesLeft.x) {
                     console.log(`Left Controller X Button: ${currentButtonStates.x ? 'Pressed' : 'Released'}`);
@@ -477,6 +563,53 @@ export class VRPlayer {
                     grab: grabButton ? grabButton.pressed : false,
                 };
 
+                // グラブ処理
+                if (currentButtonStates.grab && !this._previousButtonStatesRight.grab) {
+                    if (!this._grabbedItem) { // 他のアイテムを掴んでいないか確認
+                        const controllerPosition = new THREE.Vector3();
+                        this._xrCcontrollerRight!.getWorldPosition(controllerPosition);
+                        for (const item of this._items) {
+                            // 他のプレイヤーに掴まれていないアイテムのみ掴める
+                            if (!item.isGrabbed && item.checkCollision(controllerPosition)) {
+                                item.grab(this._socket.id);
+                                this._grabbedItem = item;
+                                this._grabbedHand = 'right';
+
+                                if (this._xrCcontrollerRight && this._grabbedItem.mesh) {
+                                    const controllerWorldQuaternion = new THREE.Quaternion();
+                                    this._xrCcontrollerRight.getWorldQuaternion(controllerWorldQuaternion);
+                                    const controllerInverseWorldQuaternion = controllerWorldQuaternion.clone().invert();
+                            
+                                    // Calculate position offset
+                                    const itemWorldPosition = new THREE.Vector3();
+                                    this._grabbedItem.mesh.getWorldPosition(itemWorldPosition);
+                                    this._grabOffsetPosition.subVectors(itemWorldPosition, controllerPosition);
+                                    this._grabOffsetPosition.applyQuaternion(controllerInverseWorldQuaternion);
+                            
+                                    // Calculate rotation offset
+                                    const itemWorldQuaternion = new THREE.Quaternion();
+                                    this._grabbedItem.mesh.getWorldQuaternion(itemWorldQuaternion);
+                                    this._grabOffsetQuaternion.multiplyQuaternions(controllerInverseWorldQuaternion, itemWorldQuaternion);
+                                }
+
+                                if (item instanceof GrabbableItem) {
+                                    this._socket.emit('itemStateChange', { itemId: item.id, isGrabbed: true, grabbedBy: this._socket.id });
+                                }
+                                break; // 複数のアイテムを同時に掴まないように
+                            }
+                        }
+                    }
+                } else if (!currentButtonStates.grab && this._previousButtonStatesRight.grab) {
+                    if (this._grabbedItem && this._grabbedHand === 'right') {
+                        this._grabbedItem.release();
+                        if (this._grabbedItem instanceof GrabbableItem) {
+                            this._socket.emit('itemStateChange', { itemId: this._grabbedItem.id, isGrabbed: false, grabbedBy: null });
+                        }
+                        this._grabbedItem = null;
+                        this._grabbedHand = null;
+                    }
+                }
+
                 // ボタンの状態が変化したかチェックし、変化があればログ出力
                 if (currentButtonStates.a !== this._previousButtonStatesRight.a) {
                     console.log(`Right Controller A Button: ${currentButtonStates.a ? 'Pressed' : 'Released'}`);
@@ -496,4 +629,6 @@ export class VRPlayer {
             }
         }
     }
+
+    
 }

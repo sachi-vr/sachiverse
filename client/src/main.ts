@@ -11,6 +11,7 @@ import { io } from 'socket.io-client';
 import { VRPlayer } from './vrplayer';
 import { WebRTCAudioClient } from './webrtcAudioClient';
 
+import { GrabbableItem } from './grabbableItem';
 import { RemoteVRPlayer } from './remoteVRPlayer';
 import { createGroundAndItems } from './ground';
 
@@ -51,6 +52,7 @@ micSelect.innerHTML = '<option>Click to select Mic</option>';
 // Populate the list when the user clicks the dropdown
 micSelect.addEventListener('mousedown', populateMicrophoneList);
 
+// STARTボタンのクリックイベントを設定
 document.getElementById('start-button')!.addEventListener('click', () => {
   // 初めの画面の値を取得
   const scaleFactor = parseFloat((document.getElementById('scalefactor') as HTMLInputElement).value);
@@ -92,7 +94,7 @@ document.getElementById('start-button')!.addEventListener('click', () => {
   const groundAndItemsGroup = new THREE.Group();
   scene.add(groundAndItemsGroup);
 
-  createGroundAndItems(groundAndItemsGroup, window);
+  const items = createGroundAndItems(groundAndItemsGroup, window);
 
   const clock = new THREE.Clock();
   let lastEmitTime = 0;
@@ -110,9 +112,10 @@ document.getElementById('start-button')!.addEventListener('click', () => {
   });
   const otherPlayers: { [id: string]: { player: RemoteVRPlayer, lastCommunicationTime: number } } = {};
 
+  // ENTER VRボタンを押したらVRモードに入る
   document.body.appendChild(VRButton.createButton(renderer));
 
-  vrplayer = new VRPlayer(scene, renderer, groundAndItemsGroup, webrtcClient, scaleFactor);
+  vrplayer = new VRPlayer(scene, renderer, groundAndItemsGroup, webrtcClient, socket, scaleFactor, items);
   vrplayer.loadVRM('/shapellFuku5.vrm');
 
   socket.on('connect', () => {
@@ -142,6 +145,20 @@ document.getElementById('start-button')!.addEventListener('click', () => {
         // リモートプレーヤーのコントローラのスティックの移動を反映
         other.player.remotegroup.position.set(-data.playerPositionOffset.x, data.playerPositionOffset.y, -data.playerPositionOffset.z);
         other.player.updatePose(data);
+        // grabbedItemの位置を更新
+        if (data.grabbedItem) {
+          const item = items.find(i => i.id === data.grabbedItem.id);
+          if (item instanceof GrabbableItem) {
+            // data.grabbedItem.positionはgroundAndItemsGroupのローカル座標
+            const grabbedPos = new THREE.Vector3().fromArray(data.grabbedItem.position);
+            // groundAndItemsGroupはscaleFactorぶん大きくなっている。scaleFactorぶん大きく移動させる
+            grabbedPos.multiplyScalar(scaleFactor);
+            item.updatePosition(
+              grabbedPos,
+              new THREE.Quaternion().fromArray(data.grabbedItem.quaternion)
+            );
+          }
+        }
         other.lastCommunicationTime = Date.now();
       }
     }
@@ -151,6 +168,13 @@ document.getElementById('start-button')!.addEventListener('click', () => {
     if (otherPlayers[id]) {
       otherPlayers[id].player.dispose();
       delete otherPlayers[id];
+    }
+  });
+
+  socket.on('itemStateChange', (data) => {
+    const item = items.find(i => i.id === data.itemId);
+    if (item) {
+      item.updateState(data.isGrabbed, data.grabbedBy);
     }
   });
 
@@ -168,6 +192,7 @@ document.getElementById('start-button')!.addEventListener('click', () => {
     }
   }, cleanupInterval);
 
+  // FPS毎のアニメーションループ
   function animate() {
     renderer.setAnimationLoop(animate);
     const delta = clock.getDelta();
@@ -179,6 +204,7 @@ document.getElementById('start-button')!.addEventListener('click', () => {
 
       if (socket.connected) {
         if (clock.elapsedTime - lastEmitTime > emitInterval) {
+          // emitInterval毎にプレイヤーのデータを送信
           const playerPositionOffset = vrplayer.playerPositionOffset;
           let headsetPositionArray = null;
           let headsetQuaternionArray = null;
@@ -186,6 +212,16 @@ document.getElementById('start-button')!.addEventListener('click', () => {
             headsetPositionArray = vrplayer.headsetPosition.toArray();
             headsetQuaternionArray = vrplayer.headsetQuaternion.toArray();
           }
+          let grabbedItemData = null;
+          if (vrplayer.grabbedItem) {
+            // グラブされたアイテムのデータを送信
+            grabbedItemData = {
+              id: vrplayer.grabbedItem.id,
+              position: vrplayer.grabbedItem.mesh.position.toArray(), // このpositionはgroundAndItemsGroupのローカル座標(scaleFactor計算は不要だった)
+              quaternion: vrplayer.grabbedItem.mesh.quaternion.toArray()
+            };
+          }
+
           socket.emit('playerdata', {
             id: socket.id,
             username: (document.getElementById('username') as HTMLInputElement).value,
@@ -196,6 +232,7 @@ document.getElementById('start-button')!.addEventListener('click', () => {
             leftHandQuaternionArray: vrplayer.leftHandQuaternion.toArray(),
             rightHandPositionArray: vrplayer.rightHandPosition.toArray(),
             rightHandQuaternionArray: vrplayer.rightHandQuaternion.toArray(),
+            grabbedItem: grabbedItemData,
           });
           lastEmitTime = clock.elapsedTime;
         }

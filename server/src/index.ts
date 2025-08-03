@@ -64,6 +64,12 @@ io.on('connection', (socket: Socket) => {
     console.log('Received webrtc-candidate from', socket.id, 'to', data.targetSocketId);
     socket.to(data.targetSocketId).emit('webrtc-candidate', { candidate: data.candidate, senderSocketId: socket.id });
   });
+
+  // アイテムの状態変更イベントのハンドリング
+  socket.on('itemStateChange', (data) => {
+    console.log('Received itemStateChange:', data);
+    socket.broadcast.emit('itemStateChange', data);
+  });
 });
 
 server.listen(port, () => {
