@@ -12,7 +12,6 @@ import { VRPlayer } from './vrplayer';
 import { WebRTCAudioClient } from './webrtcAudioClient';
 
 import { GrabbableItem } from './grabbableItem';
-import { Pen } from './Pen';
 import { RemoteVRPlayer } from './remoteVRPlayer';
 import { createGroundAndItems } from './ground';
 
@@ -88,15 +87,6 @@ document.getElementById('start-button')!.addEventListener('click', () => {
   controls.target.set(0, 1, 0);
   controls.update();
 
-
-  // WebXRの制限かThree.jsの制限でVRに入った後、カメラの位置を移動できない。
-  // そのため、groundAndItemGroupを作成し、groundAndTemGroup側の位置を移動することで、VR内でのプレイヤーの位置を調整する。
-  // groundAndItemGroupは、実際の身長とavatarの身長をあわせるため拡大縮小される
-  const groundAndItemsGroup = new THREE.Group();
-  scene.add(groundAndItemsGroup);
-
-  const items = createGroundAndItems(groundAndItemsGroup, window);
-
   const clock = new THREE.Clock();
   let lastEmitTime = 0;
   const emitInterval = 0.1; // 100ms
@@ -106,10 +96,12 @@ document.getElementById('start-button')!.addEventListener('click', () => {
   // 通信初期化
   const socket = io();
 
-  const pen = new Pen('pen1', groundAndItemsGroup, new THREE.Vector3(0.5, 0.5, -0.5), socket);
-  items.push(pen);
-  const pen2 = new Pen('pen2', groundAndItemsGroup, new THREE.Vector3(0, 1, 0.5), socket);
-  items.push(pen2);
+  // WebXRの制限かThree.jsの制限でVRに入った後、カメラの位置を移動できない。
+  // そのため、groundAndItemGroupを作成し、groundAndTemGroup側の位置を移動することで、VR内でのプレイヤーの位置を調整する。
+  // groundAndItemGroupは、実際の身長とavatarの身長をあわせるため拡大縮小される
+  const groundAndItemsGroup = new THREE.Group();
+  scene.add(groundAndItemsGroup);
+  const items = createGroundAndItems(groundAndItemsGroup, window, socket);
   const webrtcClient = new WebRTCAudioClient(socket);
   webrtcClient.startLocalStream(selectedMicId).then(() => {
     console.log('Local audio stream is ready');

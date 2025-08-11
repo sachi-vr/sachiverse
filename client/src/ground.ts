@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import { Item } from './item';
 import { GrabbableItem } from './grabbableItem';
+import { Pen } from './Pen';
+import { Socket } from 'socket.io-client';
 
-export function createGroundAndItems(groundAndItemsGroup: THREE.Group, window: Window): Item[] {
+export function createGroundAndItems(groundAndItemsGroup: THREE.Group, window: Window, socket: Socket): Item[] {
   // ground
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(10, 10),
@@ -48,5 +50,8 @@ export function createGroundAndItems(groundAndItemsGroup: THREE.Group, window: W
   light.position.set(1, 1, -1).normalize(); // 右上奥。
   groundAndItemsGroup.add(light);
 
-  return [boxItem, sphereItem];
+  const pen = new Pen('pen1', groundAndItemsGroup, new THREE.Vector3(0.5, 0.5, -0.5), socket);
+  const pen2 = new Pen('pen2', groundAndItemsGroup, new THREE.Vector3(0, 1, 0.5), socket);
+
+  return [boxItem, sphereItem, pen, pen2];
 }
