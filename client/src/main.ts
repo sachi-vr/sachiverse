@@ -76,6 +76,9 @@ document.getElementById('start-button')!.addEventListener('click', () => {
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   // カメラの位置を設定x,y,z
   camera.position.set(0, 1, 2);
+  // デフォルトカメラのレイヤー
+  camera.layers.enable(0);
+  camera.layers.disable(1); // レイヤー1は非表示
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -114,7 +117,7 @@ document.getElementById('start-button')!.addEventListener('click', () => {
   document.body.appendChild(VRButton.createButton(renderer));
 
   vrplayer = new VRPlayer(scene, renderer, groundAndItemsGroup, webrtcClient, socket, scaleFactor, items);
-  vrplayer.loadVRM('/shapellFuku5.vrm');
+  vrplayer.loadVRM('/shapellFuku5.1.vrm');
 
   socket.on('connect', () => {
     console.log('connected to server');
@@ -133,7 +136,7 @@ document.getElementById('start-button')!.addEventListener('click', () => {
       const remotePlayer = new RemoteVRPlayer(scene, vrplayer._loader, data.username, data.id, webrtcClient);
       // すぐに次のデータが来るのでotherPlayersにすぐに登録
       otherPlayers[data.id] = { player: remotePlayer, lastCommunicationTime: Date.now() };
-      remotePlayer.loadVRM('/shapellFuku5.vrm').then(() => {
+      remotePlayer.loadVRM('/shapellFuku5.1.vrm').then(() => {
         groundAndItemsGroup.add(remotePlayer.remotegroup);
         remotePlayer.updatePose(data);
       });

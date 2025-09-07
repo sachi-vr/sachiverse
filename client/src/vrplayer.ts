@@ -176,7 +176,7 @@ export class VRPlayer {
      * @param url ロードするVRMモデルのURL。
      */
     public async loadVRM(url: string) {
-        await this.avatar.loadVRM(url);
+        await this.avatar.loadVRM(url, true);
 
         // VRMの頭のボーンの初期位置を計算し、ルートからのオフセットを保存
         const headBone = this.avatar.vrm!.humanoid.getNormalizedBoneNode(VRMHumanBoneName.Head);

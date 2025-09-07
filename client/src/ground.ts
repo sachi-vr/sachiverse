@@ -43,6 +43,16 @@ export function createGroundAndItems(groundAndItemsGroup: THREE.Group, window: W
   );
   mirror.position.y = 2;
   mirror.position.z = -2;
+  // 元の onBeforeRender を退避
+  const originalOnBeforeRender = mirror.onBeforeRender;
+  // Reflector 内部のカメラ設定を上書きする
+  mirror.onBeforeRender = (renderer, scene, camera, geometry, material, group) => {
+    mirror.camera.layers.enable(1); // 鏡用カメラには1のレイヤーを表示
+    originalOnBeforeRender.call(this, renderer, scene, camera, geometry, material, group);
+  };
+  mirror.onAfterRender = (_renderer, _scene, camera, _geometry, _material, _group) => {
+    camera.layers.disable(1); // 元に戻す
+  };
   groundAndItemsGroup.add(mirror);
 
   // Directionallightの設定

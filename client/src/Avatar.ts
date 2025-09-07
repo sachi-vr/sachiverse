@@ -54,7 +54,7 @@ export class Avatar {
         return this._vrm;
     }
 
-    public async loadVRM(url: string) {
+    public async loadVRM(url: string, isPlayerSelf: boolean = false) {
         if (this._vrm) {
             this._scene.remove(this._vrm.scene);
             VRMUtils.deepDispose(this._vrm.scene);
@@ -69,6 +69,24 @@ export class Avatar {
             this._scene.add(vrm.scene);
             VRMUtils.rotateVRM0(vrm);
             this._vrmIK = new VrmIK(vrm);
+            if (isPlayerSelf) {
+              // VRM1.0 の場合、firstPerson 情報がある
+              if (vrm.firstPerson && vrm.firstPerson.meshAnnotations) {
+                //console.log('meshAnnotations:');
+                vrm.firstPerson.meshAnnotations.forEach((anno) => {
+                  //console.log(anno);
+                  if (anno.type == "thirdPersonOnly") {
+                    console.log(anno.meshes);
+                    anno.meshes.forEach((meshName) => {
+                      meshName.layers.set(1); // レイヤー1に設定
+                    });
+                  }
+                });
+              } else {
+                console.log('このVRMには meshAnnotations 情報がありません');
+              }
+            }
+
         }
     }
 
