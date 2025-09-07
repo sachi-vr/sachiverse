@@ -58,7 +58,7 @@ HTTPSで開発用の実行
 ```
 cd server; npm run dev:https
 ```
-### Dcokrでの実行方法
+### Dcokerでの実行方法
 ビルド
 ```
 docker build -t sachiverse:latest .
