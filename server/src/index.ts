@@ -34,6 +34,32 @@ app.use(express.static(path.join(__dirname, '../../client/dist')));
 // Serve static files from the public directory for VRMs
 app.use('/mydata', express.static(path.join(__dirname, '../mydata')));
 
+// vrm-upload
+app.post('/vrm-upload/:socketId', express.raw({ type: 'application/octet-stream', limit: '100mb' }), (req, res) => {
+  const socketId = req.params.socketId;
+  if (!io.sockets.sockets.has(socketId)) {
+    console.error('Received vrm-upload from non-existent socket:', socketId);
+    res.status(404).send({ status: 'error', message: 'Socket not found' });
+    return;
+  }
+  console.log('Received vrm-upload from', socketId);
+  const vrmFile = req.body;
+  const vrmDir = path.join(__dirname, '../mydata/vrms');
+  if (!fs.existsSync(vrmDir)) {
+    fs.mkdirSync(vrmDir, { recursive: true });
+  }
+  const vrmFilePath = path.join(__dirname, `../mydata/vrms/${socketId}.vrm`);
+  fs.writeFile(vrmFilePath, vrmFile, (err) => {
+    if (err) {
+      console.error('Error saving VRM file:', err);
+      res.status(500).send({ status: 'error', message: 'Failed to save VRM file' });
+      return;
+    }
+    console.log('VRM file saved:', vrmFilePath);
+    res.send({ status: 'success' });
+  });
+});
+
 io.on('connection', (socket: Socket) => {
   const ip = socket.handshake.headers['cf-connecting-ip'] || socket.handshake.address;
   console.log('a user connected for webrtc:', socket.id, 'ip:', ip);
@@ -51,25 +77,6 @@ io.on('connection', (socket: Socket) => {
   socket.on('playerdata', (data) => {
     // Broadcast the avatar data to all other clients
     socket.broadcast.emit('playerdata', data);
-  });
-
-  socket.on('vrm-upload', (vrmFile: Buffer) => {
-    console.log('Received vrm-upload from', socket.id);
-    const vrmDir = path.join(__dirname, '../mydata/vrms');
-    if (!fs.existsSync(vrmDir)) {
-      fs.mkdirSync(vrmDir, { recursive: true });
-    }
-    const vrmPath = `/mydata/vrms/${socket.id}.vrm`;
-    const vrmFilePath = path.join(__dirname, `../mydata/vrms/${socket.id}.vrm`);
-    fs.writeFile(vrmFilePath, vrmFile, ((err) => {
-      if (err) {
-        console.error('Error saving VRM file:', err);
-        return;
-      } else {
-        console.log('VRM file saved:', vrmFilePath);
-        socket.emit('vrm-upload-result', {status: 'success'});
-      }
-    }));
   });
 
   // WebRTC シグナリングイベントのハンドリング

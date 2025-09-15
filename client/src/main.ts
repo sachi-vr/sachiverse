@@ -124,37 +124,48 @@ document.getElementById('start-button')!.addEventListener('click', () => {
 
   vrplayer = new VRPlayer(scene, renderer, groundAndItemsGroup, webrtcClient, socket, scaleFactor, items);
 
-  if (vrmFile) {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const arrayBuffer = event.target?.result as ArrayBuffer;
-      if (arrayBuffer) {
-        socket.emit('vrm-upload', arrayBuffer);
-        const vrmUrl = URL.createObjectURL(vrmFile);
-        vrplayer.loadVRM(vrmUrl);
-      }
-    };
-    reader.readAsArrayBuffer(vrmFile);
-  } else {
+  if (!vrmFile) {
     vrplayer.loadVRM('/shapellFuku5.1.vrm');
     isDefaultVRM = true; // デフォルトのVRMを使用
   }
 
   socket.on('connect', () => {
     console.log('connected to server');
+
+    if (vrmFile) {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const arrayBuffer = event.target?.result as ArrayBuffer;
+        if (arrayBuffer) {
+          try {
+            const response = await fetch(`/vrm-upload/${socket.id}`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/octet-stream',
+              },
+              body: arrayBuffer,
+            });
+            if (response.ok) {
+              console.log('VRM upload successful');
+              setTimeout(() => {
+                isVRMUploadComplete = true;
+              }, 1000);
+            } else {
+              console.error('VRM upload failed');
+            }
+          } catch (error) {
+            console.error('Error uploading VRM:', error);
+          }
+          const vrmUrl = URL.createObjectURL(vrmFile);
+          vrplayer.loadVRM(vrmUrl);
+        }
+      };
+      reader.readAsArrayBuffer(vrmFile);
+    }
   });
 
   socket.on('disconnect', () => {
     console.log('disconnected from server');
-  });
-
-  socket.on('vrm-upload-result', (result) => {
-    if (result.status == 'success') {
-      console.log('vrm-upload-result: VRM upload successful');
-      isVRMUploadComplete = true;
-    } else {
-      console.error('vrm-upload-result: VRM upload failed');
-    }
   });
 
   socket.on('playerdata', (data) => {
