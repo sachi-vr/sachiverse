@@ -56,7 +56,9 @@ export class Avatar {
 
     public async loadVRM(url: string, isPlayerSelf: boolean = false) {
         if (this._vrm) {
-            this._scene.remove(this._vrm.scene);
+            if (this._vrm.scene.parent) {
+                this._vrm.scene.parent.remove(this._vrm.scene);
+            }
             VRMUtils.deepDispose(this._vrm.scene);
         }
 

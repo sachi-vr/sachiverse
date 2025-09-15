@@ -24,16 +24,20 @@ const io = new Server(server, {
     origin: '*',
     methods: ['GET', 'POST'],
   },
+  maxHttpBufferSize: 100 * 1024 * 1024, // 100MB
 });
 
 const port = process.env.PORT || (useHttps ? 3001 : 3000);
 
 // Serve static files from the client's dist directory
 app.use(express.static(path.join(__dirname, '../../client/dist')));
+// Serve static files from the public directory for VRMs
+app.use('/mydata', express.static(path.join(__dirname, '../mydata')));
 
 io.on('connection', (socket: Socket) => {
   const ip = socket.handshake.headers['cf-connecting-ip'] || socket.handshake.address;
   console.log('a user connected for webrtc:', socket.id, 'ip:', ip);
+
   console.log('Broadcasting webrtc-playerconnected to new player:', socket.id);
   socket.broadcast.emit('webrtc-playerconnected', socket.id);
 
@@ -47,6 +51,25 @@ io.on('connection', (socket: Socket) => {
   socket.on('playerdata', (data) => {
     // Broadcast the avatar data to all other clients
     socket.broadcast.emit('playerdata', data);
+  });
+
+  socket.on('vrm-upload', (vrmFile: Buffer) => {
+    console.log('Received vrm-upload from', socket.id);
+    const vrmDir = path.join(__dirname, '../mydata/vrms');
+    if (!fs.existsSync(vrmDir)) {
+      fs.mkdirSync(vrmDir, { recursive: true });
+    }
+    const vrmPath = `/mydata/vrms/${socket.id}.vrm`;
+    const vrmFilePath = path.join(__dirname, `../mydata/vrms/${socket.id}.vrm`);
+    fs.writeFile(vrmFilePath, vrmFile, ((err) => {
+      if (err) {
+        console.error('Error saving VRM file:', err);
+        return;
+      } else {
+        console.log('VRM file saved:', vrmFilePath);
+        socket.emit('vrm-upload-result', {status: 'success'});
+      }
+    }));
   });
 
   // WebRTC シグナリングイベントのハンドリング

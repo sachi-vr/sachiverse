@@ -17,6 +17,8 @@ import { createGroundAndItems } from './ground';
 
 const micSelect = document.getElementById('mic-select') as HTMLSelectElement;
 let micsPopulated = false;
+let isDefaultVRM = false; // デフォルトのVRMを使用しているかどうか
+let isVRMUploadComplete = false; // VRMアップロードが完了したかどうかのフラグ
 
 async function populateMicrophoneList() {
     if (micsPopulated) return;
@@ -60,6 +62,9 @@ document.getElementById('start-button')!.addEventListener('click', () => {
   if (['Click to select Mic', 'No microphones found', 'Mic permission denied'].includes(selectedMicId)) {
     selectedMicId = undefined;
   }
+
+  const vrmFileInput = document.getElementById('vrm-file-input') as HTMLInputElement;
+  const vrmFile = vrmFileInput.files?.[0];
 
   // remove overlay
   const overlay = document.getElementById('overlay');
@@ -111,13 +116,29 @@ document.getElementById('start-button')!.addEventListener('click', () => {
   }).catch(error => {
     console.error('Failed to start local audio stream:', error);
   });
+
   const otherPlayers: { [id: string]: { player: RemoteVRPlayer, lastCommunicationTime: number } } = {};
 
   // ENTER VRボタンを押したらVRモードに入る
   document.body.appendChild(VRButton.createButton(renderer));
 
   vrplayer = new VRPlayer(scene, renderer, groundAndItemsGroup, webrtcClient, socket, scaleFactor, items);
-  vrplayer.loadVRM('/shapellFuku5.1.vrm');
+
+  if (vrmFile) {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const arrayBuffer = event.target?.result as ArrayBuffer;
+      if (arrayBuffer) {
+        socket.emit('vrm-upload', arrayBuffer);
+        const vrmUrl = URL.createObjectURL(vrmFile);
+        vrplayer.loadVRM(vrmUrl);
+      }
+    };
+    reader.readAsArrayBuffer(vrmFile);
+  } else {
+    vrplayer.loadVRM('/shapellFuku5.1.vrm');
+    isDefaultVRM = true; // デフォルトのVRMを使用
+  }
 
   socket.on('connect', () => {
     console.log('connected to server');
@@ -125,6 +146,15 @@ document.getElementById('start-button')!.addEventListener('click', () => {
 
   socket.on('disconnect', () => {
     console.log('disconnected from server');
+  });
+
+  socket.on('vrm-upload-result', (result) => {
+    if (result.status == 'success') {
+      console.log('vrm-upload-result: VRM upload successful');
+      isVRMUploadComplete = true;
+    } else {
+      console.error('vrm-upload-result: VRM upload failed');
+    }
   });
 
   socket.on('playerdata', (data) => {
@@ -136,7 +166,11 @@ document.getElementById('start-button')!.addEventListener('click', () => {
       const remotePlayer = new RemoteVRPlayer(scene, vrplayer._loader, data.username, data.id, webrtcClient);
       // すぐに次のデータが来るのでotherPlayersにすぐに登録
       otherPlayers[data.id] = { player: remotePlayer, lastCommunicationTime: Date.now() };
-      remotePlayer.loadVRM('/shapellFuku5.1.vrm').then(() => {
+      let vrmUrl = '/shapellFuku5.1.vrm';
+      if (data.isDefaultVRM === false) {
+        vrmUrl = `/mydata/vrms/${data.id}.vrm`;
+      }
+      remotePlayer.loadVRM(vrmUrl).then(() => {
         groundAndItemsGroup.add(remotePlayer.remotegroup);
         remotePlayer.updatePose(data);
       });
@@ -172,7 +206,7 @@ document.getElementById('start-button')!.addEventListener('click', () => {
     }
   });
 
-    socket.on('itemStateChange', (data) => {
+  socket.on('itemStateChange', (data) => {
     const item = items.find(i => i.id === data.itemId);
     if (item) {
       item.updateState(data.isGrabbed, data.grabbedBy);
@@ -211,7 +245,8 @@ document.getElementById('start-button')!.addEventListener('click', () => {
         vrplayer.update(delta);
       }
 
-      if (socket.connected) {
+      if (socket.connected && (isDefaultVRM || isVRMUploadComplete)) {
+        // socket接続していて、かつ、(デフォルトVRMもしくはVRMアップロード完了している場合のみ送信)
         if (clock.elapsedTime - lastEmitTime > emitInterval) {
           // emitInterval毎にプレイヤーのデータを送信
           const playerPositionOffset = vrplayer.playerPositionOffset;
@@ -242,6 +277,7 @@ document.getElementById('start-button')!.addEventListener('click', () => {
             rightHandPositionArray: vrplayer.rightHandPosition.toArray(),
             rightHandQuaternionArray: vrplayer.rightHandQuaternion.toArray(),
             grabbedItem: grabbedItemData,
+            isDefaultVRM: isDefaultVRM,
           });
           lastEmitTime = clock.elapsedTime;
         }
